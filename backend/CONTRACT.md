@@ -412,7 +412,7 @@ If generation fails twice for anyone, `reveal` is skipped and `verdict` arrives 
   "properties": {
     "tally": { "$ref": "#/Tally" },
     "winner": { "enum": ["A", "B", null], "description": "null = draw or abandoned" },
-    "reason": { "enum": ["majority", "rounds_complete", "score_tiebreak", "draw", "forfeit_disconnect", "abandoned"] },
+    "reason": { "enum": ["majority", "score_tiebreak", "draw", "forfeit_disconnect", "abandoned"] },
     "totals": { "type": "object", "properties": { "A": { "type": "number" }, "B": { "type": "number" } },
       "description": "sum of per-round totals (0-100 each)" } } }
 ```
@@ -462,7 +462,7 @@ The socket stays open. Show a toast or ignore it.
 - Round winner: the higher `total` wins. Equal totals → `roundWinner: null` (tie, no point). A forfeiter gets `null` scores and the other player takes the round, even though their result is still judged and shown. Both forfeit → `no_contest`. Generation failed after one retry → `void`, no points.
 - Voided, no-contest and tied rounds still count toward `roundsTotal`. They are not replayed.
 - The first player to `roundsToWin = ceil(roundsTotal / 2)` round wins takes the match. That ends it at once (`reason: "majority"`).
-- After all rounds with nobody at `roundsToWin`: higher `totals` wins (`score_tiebreak`). If totals are equal → `winner: null`, `reason: "draw"`.
+- After all rounds with nobody at `roundsToWin` (round wins no longer matter at this point): higher `totals` wins (`score_tiebreak`). If totals are equal → `winner: null`, `reason: "draw"`.
 - Disconnect: `DISCONNECT_GRACE_SECONDS` to reattach. Past that the opponent wins (`forfeit_disconnect`). If both are gone past grace → `abandoned`, `winner: null`. A player who never connects after pairing is treated as disconnected from the moment of pairing.
 
 ---
