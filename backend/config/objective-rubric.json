@@ -1,0 +1,22 @@
+{
+  "//": "Objective quality agent rubric. Parts must sum to 50 (validated in tests). Each part maps a similarity in [0,1] to points: score = max * clamp((similarity - floor) / (ceiling - floor), 0, 1). Raise 'floor' to stop random images earning points; lower 'ceiling' to make full marks easier. Metrics: dhash (structure, 1 - hamming/64), histogram (color, 1 - chi-square distance over 16-bin RGB histograms), ssim (detail, mean SSIM on 64x64 grayscale), keywords (share of the original prompt's keywords that appear in the player's prompt).",
+  "version": 1,
+  "total": 50,
+  "imageSize": 64,
+  "parts": [
+    { "key": "structure", "label": "Structure match", "metric": "dhash", "max": 12, "floor": 0.55, "ceiling": 0.95 },
+    { "key": "color", "label": "Color match", "metric": "histogram", "max": 12, "floor": 0.35, "ceiling": 0.92 },
+    { "key": "detail", "label": "Detail match", "metric": "ssim", "max": 14, "floor": 0.15, "ceiling": 0.9 },
+    { "key": "keywords", "label": "Spell keywords", "metric": "keywords", "max": 12, "floor": 0.0, "ceiling": 0.6 }
+  ],
+  "keywords": {
+    "minLength": 3,
+    "stopwords": [
+      "a", "an", "the", "and", "or", "but", "of", "to", "in", "on", "at", "by", "for", "with", "from", "into", "onto", "as",
+      "is", "are", "be", "it", "its", "this", "that", "these", "those", "same", "keep", "make", "turn", "turned", "change",
+      "image", "picture", "photo", "please", "very", "more", "less", "just", "like", "exactly", "should", "would", "there",
+      "their", "them", "then", "than", "while", "where", "what", "which", "who", "has", "have", "had", "was", "were", "all",
+      "any", "some", "also", "not", "but", "version", "style"
+    ]
+  }
+}

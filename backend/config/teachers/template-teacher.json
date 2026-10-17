@@ -1,0 +1,21 @@
+{
+  "//": "HOW TO ADD A TEACHER. (1) Copy this file to config/teachers/<your-id>.json. (2) Fill every field; delete the '//' keys if you like (any key starting with '//' or '_' is ignored). (3) Register it with one line in src/judging/whiskers/teachers.ts. (4) Set TEACHER=<your-id> in wrangler.jsonc vars (or `wrangler deploy --var TEACHER:<id>`). (5) Run `npm test`: test/teacher.test.ts validates every registered teacher (rubric maxes must sum to 50, keys unique, quoteStyle and systemPrompt present).",
+  "id": "template-teacher",
+  "name": "Template Teacher",
+  "//systemPrompt": "Who the teacher is, their voice, and how to judge. The pipeline appends the rubric, the student prompts, the clue and the original prompt automatically, so don't repeat those here. Keep the rule: joke about the model or yourself, never the student.",
+  "systemPrompt": "You are Template Teacher, a placeholder magic teacher who judges Prompt Wizard Duels. Score each student's spell and result fairly against the rubric. Be kind and brief.",
+  "//rubric": "2-6 parts. Each: key (lowercase snake_case, stable: it's stored in D1 round_scores), label (shown in the UI), max (points), description (what the judge looks for). The maxes MUST sum to 50.",
+  "rubric": [
+    { "key": "intent", "label": "Spell intent", "max": 25, "description": "Did the spell ask for the same transformation as the original prompt?" },
+    { "key": "fidelity", "label": "Visual match", "max": 25, "description": "How close is the result to the target image?" }
+  ],
+  "//quoteStyle": "One line telling the judge how to write each per-player quote.",
+  "quoteStyle": "One friendly sentence with one concrete prompting hint.",
+  "//cannedQuotes": "Optional. Used when the LLM judge fails twice (fallback), a player forfeits (forfeit), or generation fails (void). If missing, generic lines are used.",
+  "cannedQuotes": {
+    "fallback": ["The judge is taking a nap. Half marks all round."],
+    "forfeit": ["No spell, no magic."],
+    "void": ["The image model tripped. This round doesn't count."],
+    "lessonFallback": "Say what changes and what stays."
+  }
+}
