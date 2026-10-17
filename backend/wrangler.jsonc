@@ -1,0 +1,70 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "prompt-wizard-duels",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-16",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "observability": {
+    "enabled": true,
+    "logs": { "enabled": true, "head_sampling_rate": 1 },
+    "traces": { "enabled": true, "head_sampling_rate": 0.1 }
+  },
+
+  // Non-secret tunables. See CONTRACT.md §7 for the full table.
+  "vars": {
+    "ROUNDS_PER_MATCH": "3",
+    "CAST_SECONDS": "60",
+    "CAST_GRACE_SECONDS": "3",
+    "QUEUE_TIMEOUT_SECONDS": "60",
+    "DISCONNECT_GRACE_SECONDS": "30",
+    "READY_TIMEOUT_SECONDS": "15",
+    "VERDICT_SECONDS": "12",
+    "MAX_PROMPT_CHARS": "400",
+    "DAILY_DUEL_CAP": "200",
+    "SESSION_TTL_HOURS": "720",
+    "IMAGE_GEN_PROVIDER": "workers-ai",
+    "IMAGE_GEN_MODEL": "@cf/black-forest-labs/flux-2-klein-4b",
+    "JUDGE_PROVIDER": "anthropic",
+    "JUDGE_MODEL": "claude-haiku-5-5",
+    "JUDGE_VISION_MODEL": "@cf/meta/llama-4-scout-17b-16e-instruct",
+    "TEACHER": "professor-whiskers",
+    "AI_GATEWAY_URL": "",
+    "OPENART_BASE_URL": "https://api.openart.ai/v1",
+    "ASSET_BASE_URL": ""
+  },
+
+  // Secrets: ACCESS_CODE (required), SESSION_SECRET, ADMIN_TOKEN, ANTHROPIC_API_KEY, OPENART_API_KEY.
+  // Set with `wrangler secret put <NAME>`; locally via .dev.vars (see .dev.vars.example).
+  "secrets": { "required": ["ACCESS_CODE"] },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "prompt-wizard-duels",
+      // Replace with the id printed by `wrangler d1 create prompt-wizard-duels`.
+      // Local dev (`wrangler dev`) works with this placeholder.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "prompt-wizard-duels" }],
+
+  // Workers AI. Used by the workers-ai image provider and the workers-ai judge fallback.
+  // Workers AI always runs remotely, even under `wrangler dev`; the stub providers never touch it.
+  "ai": { "binding": "AI" },
+
+  "durable_objects": {
+    "bindings": [
+      { "name": "MATCHMAKER", "class_name": "MatchmakerDO" },
+      { "name": "MATCH", "class_name": "MatchDO" }
+    ]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["MatchmakerDO", "MatchDO"] }],
+
+  // Per-device rate limit (Workers Rate Limiting binding). period must be 10 or 60.
+  "ratelimits": [
+    { "name": "RATE_LIMITER", "namespace_id": "1001", "simple": { "limit": 60, "period": 60 } }
+  ]
+}

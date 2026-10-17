@@ -1,16 +1,24 @@
 {
-  "name": "backend",
+  "name": "prompt-wizard-duels-backend",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Prompt Wizard Duels backend (Cloudflare Workers + Durable Objects)",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "wrangler dev",
+    "dev:stub": "wrangler dev --local --var IMAGE_GEN_PROVIDER:stub --var JUDGE_PROVIDER:stub --var ACCESS_CODE:letmein --var ADMIN_TOKEN:dev-admin",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
+    "stub:images": "tsx scripts/make-stub-set.ts",
+    "load-set": "tsx scripts/load-set.ts",
+    "harness": "tsx test/play-match.ts",
+    "types": "wrangler types",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "deploy": "wrangler deploy"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
+  "license": "UNLICENSED",
+  "type": "module",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.135.0",
     "fast-png": "^8.0.0",
     "hono": "^4.13.13",
     "jpeg-js": "^0.4.4"
@@ -23,5 +31,6 @@
     "vitest": "^5.0.5",
     "wrangler": "^4.151.1",
     "ws": "^8.22.0"
-  }
+  },
+  "private": true
 }
