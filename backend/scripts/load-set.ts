@@ -78,7 +78,8 @@ async function uploadImage(opts: Opts, key: string, png: Uint8Array): Promise<"u
     if (head.ok && head.headers.get("x-content-sha256") === hash) return "unchanged";
   }
   if (opts.dryRun) return "uploaded";
-  const res = await api(opts, "PUT", `/admin/assets/${key}`, png, { "content-type": "image/png", "x-content-sha256": hash });
+  const body = png.buffer.slice(png.byteOffset, png.byteOffset + png.byteLength) as ArrayBuffer;
+  const res = await api(opts, "PUT", `/admin/assets/${key}`, body, { "content-type": "image/png", "x-content-sha256": hash });
   if (!res.ok) throw new Error(`upload ${key} failed: ${res.status} ${await res.text()}`);
   return "uploaded";
 }

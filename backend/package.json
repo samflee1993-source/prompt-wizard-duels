@@ -11,9 +11,11 @@
     "load-set": "tsx scripts/load-set.ts",
     "harness": "tsx test/play-match.ts",
     "types": "wrangler types",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
     "test": "vitest run",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "dev:stub:fast": "wrangler dev --local --var IMAGE_GEN_PROVIDER:stub --var JUDGE_PROVIDER:stub --var ACCESS_CODE:letmein --var ADMIN_TOKEN:dev-admin --var CAST_SECONDS:8 --var CAST_GRACE_SECONDS:1 --var DISCONNECT_GRACE_SECONDS:5 --var VERDICT_SECONDS:3",
+    "harness:edge": "tsx test/play-match.ts --edge"
   },
   "license": "UNLICENSED",
   "type": "module",

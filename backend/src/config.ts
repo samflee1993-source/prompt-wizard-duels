@@ -32,7 +32,8 @@ function s(v: unknown, def: string): string {
   return typeof v === "string" && v.trim() !== "" ? v.trim() : def;
 }
 
-export function readConfig(env: Partial<Record<keyof Env, unknown>>): AppConfig {
+export function readConfig(envIn: object): AppConfig {
+  const env = envIn as Record<string, unknown>;
   return {
     roundsPerMatch: int(env.ROUNDS_PER_MATCH, 3, 1, 15),
     castSeconds: int(env.CAST_SECONDS, 60, 5, 600),

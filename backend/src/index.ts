@@ -6,6 +6,7 @@ import { absolutizeManifest, getManifest, HttpError, listSets, upsertSet } from 
 import { validateSetUpsert } from "./challenges/schema";
 import { log, readConfig } from "./config";
 import { loadTeacher } from "./judging/whiskers/teachers";
+import { decodeImage, sniffFormat } from "./lib/image";
 
 export { MatchDO } from "./match/MatchDO";
 export { MatchmakerDO } from "./matchmaker/MatchmakerDO";
@@ -212,6 +213,18 @@ app.put("/admin/sets/:setId", requireAdmin, async (c) => {
   if (!v.ok) throw fail(400, "bad_request", v.errors.join("; "));
   const { changed, manifest } = await upsertSet(c.env, v.value);
   return c.json({ ok: true, changed, manifestKey: `sets/${v.value.id}/manifest.json`, manifest });
+});
+
+// Diagnostic: proves an image decodes inside the Workers runtime (same decoder the objective agent uses).
+app.post("/admin/decode", requireAdmin, async (c) => {
+  const bytes = new Uint8Array(await c.req.arrayBuffer());
+  const format = sniffFormat(bytes);
+  try {
+    const img = decodeImage(bytes);
+    return c.json({ ok: true, format, width: img.width, height: img.height, firstPixel: Array.from(img.data.subarray(0, 4)) });
+  } catch (e) {
+    throw fail(400, "bad_request", `decode failed (${format}): ${e instanceof Error ? e.message : String(e)}`);
+  }
 });
 
 function withWsUrl<T extends { status: string }>(c: Context<AppEnv>, res: T): T & { wsUrl?: string } {

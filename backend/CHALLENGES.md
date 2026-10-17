@@ -99,6 +99,7 @@ All routes require `Authorization: Bearer <ADMIN_TOKEN>` and return 404 when `AD
 |---|---|
 | `HEAD /admin/assets/<key>` | 200 with `x-content-sha256` if present, else 404 |
 | `PUT /admin/assets/<key>` | Raw image bytes. Headers: `content-type`, `x-content-sha256`. Keys must start with `sets/`. |
+| `POST /admin/decode` | Raw image bytes. Returns `{ format, width, height }` if the Worker runtime can decode it (the same decoder the objective agent uses). Handy for checking new sets. |
 | `PUT /admin/sets/:setId` | Body: `SetUpsert` (see `src/challenges/schema.ts`). Checks that every image exists, writes the manifest, upserts D1. Returns `{ changed, manifestKey, manifest }`. |
 
 ## Regenerating the stub set

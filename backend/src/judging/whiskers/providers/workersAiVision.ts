@@ -2,10 +2,9 @@
 // TODO-verify: multi-image input and json_schema response_format support vary by model; this
 // sends all images as data URLs and also asks for JSON in the prompt, so a model that ignores
 // response_format still usually works. The pipeline retries once and then falls back to 25/50.
-import { bytesToBase64 } from "../../../lib/image";
 import type { Slot } from "../../../protocol";
 import { extractJson, judgeInstructions, judgeOutputSchema, type JudgeInput, type JudgeProvider } from "../types";
-import { judgeImagePng } from "./anthropic";
+import { judgeImage } from "./anthropic";
 import { runAi } from "../../../providers/ai";
 
 export class WorkersAiVisionProvider implements JudgeProvider {
@@ -28,7 +27,10 @@ export class WorkersAiVisionProvider implements JudgeProvider {
           role: "user",
           content: [
             { type: "text", text: judgeInstructions(input, slots) },
-            ...images.map((b) => ({ type: "image_url", image_url: { url: `data:image/png;base64,${bytesToBase64(judgeImagePng(b, 384))}` } })),
+            ...images.map((b) => {
+              const img = judgeImage(b, 384);
+              return { type: "image_url", image_url: { url: `data:${img.mime};base64,${img.data}` } };
+            }),
           ],
         },
       ],

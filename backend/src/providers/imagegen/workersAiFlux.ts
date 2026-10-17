@@ -1,6 +1,6 @@
 // Default image provider: FLUX.2 [klein] on Workers AI, editing the Before image with the player's prompt.
 // Input images go in multipart fields input_image_0..3 and must be smaller than 512x512.
-import { base64ToBytes, decodeImage, encodePng, fitWithin, mimeFor, sniffFormat } from "../../lib/image";
+import { base64ToBytes, mimeFor, shrinkToFit, sniffFormat } from "../../lib/image";
 import { runAi } from "../ai";
 import type { ImageGenInput, ImageGenOutput, ImageGenProvider } from "./types";
 
@@ -35,7 +35,8 @@ export class WorkersAiFluxProvider implements ImageGenProvider {
 
   async generate(input: ImageGenInput): Promise<ImageGenOutput> {
     const started = Date.now();
-    const before = fitWithin(decodeImage(input.beforeImage), MAX_INPUT_SIDE);
+    // Already-small Before images (the recommended authoring size) are sent as-is: no decode, no CPU.
+    const before = shrinkToFit(input.beforeImage, MAX_INPUT_SIDE);
     const size = outSize(input.params, before.width, before.height);
 
     const form = new FormData();
@@ -44,7 +45,7 @@ export class WorkersAiFluxProvider implements ImageGenProvider {
     form.append("height", String(size.height));
     const seed = num(input.params?.seed);
     if (seed !== undefined) form.append("seed", String(Math.trunc(seed)));
-    form.append("input_image_0", new Blob([encodePng(before)], { type: "image/png" }), "before.png");
+    form.append("input_image_0", new Blob([before.bytes], { type: before.mime }), before.mime === "image/png" ? "before.png" : "before.jpg");
 
     // FormData → Response gives us the multipart body plus the boundary-bearing content type.
     const multipart = new Response(form);

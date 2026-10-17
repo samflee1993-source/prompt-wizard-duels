@@ -1,0 +1,48 @@
+# Decisions
+
+One line per choice the brief left open.
+
+- **Config file:** `wrangler.jsonc`, not `wrangler.toml`. The Cloudflare skills prefer it and newer Wrangler features are JSON-only. Same bindings either way.
+- **Session tokens:** stateless HMAC-SHA256 tokens (`v1.<payload>.<sig>`) holding deviceId, displayName and expiry. No session table, and every DO can verify them. Key = `SESSION_SECRET` or `ACCESS_CODE`.
+- **Session lifetime:** 30 days (`SESSION_TTL_HOURS=720`). Re-calling `POST /session` with the same device id restores the identity.
+- **WS auth:** the token goes in the `?token=` query param, because browsers can't set headers on WebSocket upgrades. The Worker verifies it and passes `x-device-id` to the DO, overwriting any client-supplied value.
+- **Learning about a match:** the client polls `GET /queue/status` (1–2 s) after `POST /queue/join`. `match_found` is the first WS message on (re)connect and carries a full snapshot. There is no lobby WebSocket.
+- **Added endpoint:** `GET /queue/status` (not in the brief's list) so polling has a side-effect-free route.
+- **Join semantics:** joining while waiting keeps your place in line. Joining after a match starts a new wait ("duel again").
+- **Slot assignment:** the matchmaker flips a coin for A/B, so the earlier joiner isn't always Wizard A.
+- **Set choice:** `ORDER BY RANDOM()` over active sets with enough rounds. That's fine at thousands of rows. Revisit at ~100k.
+- **Rounds used:** a match plays the first `ROUNDS_PER_MATCH` rounds of the chosen set, in order.
+- **Pre-round lobby:** a `lobby` phase before round 1 waits for both players to connect and send `ready`. It auto-starts `READY_TIMEOUT_SECONDS` (15 s) after both connect.
+- **`intro` phase:** transient. `round_intro` goes out and casting opens at once. Players read Before/Target during the 60 s writing window, as the brief specifies.
+- **Auto-cast at zero:** the client sends the field as a normal `cast` when its timer hits zero. The server accepts casts until `deadlineAt + CAST_GRACE_SECONDS` (3 s) to absorb latency. No draft-sync message, which keeps the brief's client message set (`ready`, `cast`, `ping`).
+- **Forfeited round:** the opponent wins it. Their result is still generated and judged so they see their scores. Both forfeit → `no_contest`, no point.
+- **Void / no-contest / tie rounds:** they count toward `roundsTotal` and aren't replayed.
+- **No-majority rule:** applied literally. When all rounds are played and nobody has `ceil(n/2)` wins, total score decides, not round count. With odd round counts the two always agree. With even counts (e.g. 2–2 of 4) the brief's `ceil(n/2)` lets both reach it, and the score tiebreak resolves that. Note: for even round counts `ceil(n/2)` is half, not a majority. Kept as specified.
+- **Generation failure:** if *either* player's generation fails twice, the whole round is voided, for fairness. The retry count is persisted before each call, so a crash mid-call still uses up the attempt.
+- **Verdict screen:** auto-advances after `VERDICT_SECONDS` (12 s), or right away when both players send `ready`.
+- **Disconnect before connecting:** a paired player who never opens the socket is treated as disconnected from pairing time and forfeits after the grace period. Both gone → `abandoned`, no winner.
+- **One socket per player:** a new connection replaces the old one (close code 4000).
+- **Pipeline execution:** generation and judging run inside `alarm()`. Alarms are retried by the platform on failure, and the constructor re-arms an alarm if the DO restarts mid-pipeline.
+- **DO state storage:** one JSON document per match in SQLite, rewritten after every transition. Ended matches self-delete after 24 h. D1 keeps the permanent record.
+- **Image URLs:** served by the Worker at `/assets/<R2 key>` (public, cached), or under `ASSET_BASE_URL` if set (e.g. an R2 custom domain). The manifest stores relative `/assets/...` URLs. The API makes them absolute per request.
+- **Loader transport:** `load-set.ts` uploads through Worker admin routes (`/admin/*`, `ADMIN_TOKEN`), not the Wrangler CLI. One command works for local and prod, and it scales to thousands of sets without spawning a process per file.
+- **Loader idempotency:** a sha256 per image (R2 custom metadata) plus a content hash per set. Unchanged images and sets are skipped, and stale extra rounds are deleted.
+- **JPEG sources:** converted to PNG at load time so the R2 layout is always `before.png` / `target.png`.
+- **Daily cap:** `DAILY_DUEL_CAP` is global (matches created since UTC midnight, all players), default 200, `0` = unlimited. It guards cost, not fairness.
+- **Rate limit:** Workers Rate Limiting binding, 60 requests / 60 s per device (keyed by device id; `/session` keyed by the device id in the body).
+- **Image model:** `@cf/black-forest-labs/flux-2-klein-4b` (FLUX.2 [klein], image editing via `input_image_0`, inputs downscaled to < 512 px). The player's prompt is sent verbatim, and the set round's `modelParams` (seed, width, height) are passed through.
+- **Judge model:** `claude-haiku-5-5` via the Anthropic TypeScript SDK pointed at AI Gateway (`<AI_GATEWAY_URL>/anthropic`). It uses structured outputs (JSON schema built from the teacher rubric) at `effort: "low"`. Images are downscaled to 512 px.
+- **Free judge fallback:** `@cf/meta/llama-4-scout-17b-16e-instruct`, used when `JUDGE_PROVIDER=workers-ai` or the Anthropic key is missing.
+- **Judge sees:** Before, Target, each result, the clue, the original prompt and both spells. Forfeiters are left out of the schema entirely.
+- **Judge fallback:** each rubric part is set to half its max (25/50 total), with a canned in-character quote. It's flagged `fallback: true` in the score.
+- **Teacher files:** the brief's fields (`name`, `systemPrompt`, `rubric`, `quoteStyle`) plus `id` and an optional `cannedQuotes` block (fallback / forfeit / void lines, lesson fallback). Keys starting with `//` or `_` are comments.
+- **Teacher registry:** one import line per teacher in `src/judging/whiskers/teachers.ts`. The bundler needs static imports. Unknown `TEACHER` ids fall back to Professor Whiskers.
+- **Objective metrics:** dHash on 9×8 grayscale, chi-square distance over 16-bin per-channel RGB histograms, mean SSIM over 8×8 windows (stride 4) on 64×64 grayscale, and keyword recall (share of the original prompt's non-stopword keywords found in the player's prompt, with a tiny stemmer).
+- **Objective scaling:** each part maps similarity linearly between `floor` (0 pts) and `ceiling` (max pts), all in `config/objective-rubric.json`.
+- **Score rounding:** one decimal for objective parts and totals; whole numbers for Whiskers parts.
+- **Image decoding:** `fast-png` + `jpeg-js` (pure JS). Verified under `wrangler dev` with the `/admin/decode` diagnostic route. WebP is not supported. If a provider returns WebP, generation fails and is retried.
+- **Unit tests:** run in Node (pure modules). Workers-runtime behaviour (DOs, alarms, WebSockets, D1, R2) is covered end to end by the harness against `wrangler dev`, not by `@cloudflare/vitest-pool-workers`.
+- **Harness scenarios:** default (3 full rounds plus a mid-round reconnect) and `--edge` (void, forfeit, disconnect forfeit; needs `npm run dev:stub:fast`).
+- **CORS:** `*` for the beta. Tighten it to the app origin before a wider launch.
+- **Answer leakage:** `GET /challenges/:setId` returns `originalPrompt`, as the brief's manifest requires, so players could peek. Accepted for friends and family.
+- **Observability:** Workers Logs on (100%), traces sampled at 10%, structured JSON logs.

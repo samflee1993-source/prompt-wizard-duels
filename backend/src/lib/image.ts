@@ -158,3 +158,40 @@ export function base64ToBytes(b64: string): Uint8Array {
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
 }
+
+/** Reads width/height from a PNG or JPEG header without decoding pixels. */
+export function imageSize(bytes: Uint8Array): { width: number; height: number } | null {
+  const fmt = sniffFormat(bytes);
+  if (fmt === "png" && bytes.length >= 24) {
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    return { width: dv.getUint32(16), height: dv.getUint32(20) };
+  }
+  if (fmt === "jpeg") {
+    let i = 2;
+    while (i + 9 < bytes.length) {
+      if (bytes[i] !== 0xff) return null;
+      const marker = bytes[i + 1];
+      const len = (bytes[i + 2] << 8) | bytes[i + 3];
+      // SOF0..SOF15 except DHT (C4), JPG (C8), DAC (CC)
+      if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+        return { height: (bytes[i + 5] << 8) | bytes[i + 6], width: (bytes[i + 7] << 8) | bytes[i + 8] };
+      }
+      i += 2 + len;
+    }
+  }
+  return null;
+}
+
+/**
+ * Returns the image unchanged when it is already PNG/JPEG and fits in maxSide (no CPU spent),
+ * otherwise decodes, downsizes and re-encodes as PNG.
+ */
+export function shrinkToFit(bytes: Uint8Array, maxSide: number): { bytes: Uint8Array; mime: string; width: number; height: number } {
+  const size = imageSize(bytes);
+  const fmt = sniffFormat(bytes);
+  if (size && (fmt === "png" || fmt === "jpeg") && Math.max(size.width, size.height) <= maxSide) {
+    return { bytes, mime: mimeFor(fmt), ...size };
+  }
+  const img = fitWithin(decodeImage(bytes), maxSide);
+  return { bytes: encodePng(img), mime: "image/png", width: img.width, height: img.height };
+}

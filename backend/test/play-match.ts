@@ -5,8 +5,12 @@
 //   npm run harness           # terminal 2
 //
 // Env: PWD_API (default http://localhost:8787), ACCESS_CODE (default letmein).
-// The script makes A win round 1 and B win round 2, so round 3 decides; B drops its socket
-// mid-round 1 and reattaches to exercise reconnect. Exits non-zero on any failed check.
+// Default scenario: A wins round 1 and B wins round 2, so round 3 decides; the second wizard drops
+// its socket mid-round 1 and reattaches to exercise reconnect. Exits non-zero on any failed check.
+//
+// --edge scenario (start the server with `npm run dev:stub:fast`: 8 s casting, 5 s disconnect grace):
+//   round 1: A's generation fails twice → void; round 2: B casts nothing → forfeit, A wins the round;
+//   round 3: B disconnects for good → match_end forfeit_disconnect, A wins.
 import type { MatchEndPayload, ServerMessage, Slot, VerdictPayload } from "../src/protocol.ts";
 
 const API = (process.env.PWD_API ?? "http://localhost:8787").replace(/\/+$/, "");
@@ -19,7 +23,11 @@ const SPELLS: Array<{ strong: string; weak: string }> = [
   { strong: "replace the red square with a red triangle pointing up, same size, keep the green background", weak: "shapes" },
   { strong: "night version: dark navy sky with small stars, the black circle becomes a glowing pale moon", weak: "dark" },
 ];
-const PLAN: Record<Slot, Array<"strong" | "weak">> = { A: ["strong", "weak", "strong"], B: ["weak", "strong", "weak"] };
+type Action = "strong" | "weak" | "fail" | "silent" | "vanish";
+const EDGE = process.argv.includes("--edge");
+const PLAN: Record<Slot, Action[]> = EDGE
+  ? { A: ["fail", "strong", "strong"], B: ["strong", "silent", "vanish"] }
+  : { A: ["strong", "weak", "strong"], B: ["weak", "strong", "weak"] };
 
 const failures: string[] = [];
 const check = (ok: boolean, msg: string) => {
@@ -47,6 +55,7 @@ interface Wizard {
   verdicts: VerdictPayload[];
   end?: MatchEndPayload;
   reconnected: boolean;
+  vanished?: boolean;
   events: string[];
 }
 
@@ -97,7 +106,17 @@ function play(w: Wizard, opts: { dropOnce: boolean }): Promise<void> {
               return;
             }
             const kind = PLAN[w.slot!][ri.round - 1];
-            const prompt = SPELLS[ri.round - 1][kind];
+            if (kind === "vanish") {
+              console.log(`[${w.name}] round ${ri.round}: disconnecting for good`);
+              w.vanished = true;
+              ws.close();
+              return resolve();
+            }
+            if (kind === "silent") {
+              console.log(`[${w.name}] round ${ri.round}: leaving the scroll empty (forfeit)`);
+              break;
+            }
+            const prompt = kind === "fail" ? "STUB_FAIL please" : SPELLS[ri.round - 1][kind];
             console.log(`[${w.name}] round ${ri.round}: clue "${ri.clue}" → casting (${kind})`);
             setTimeout(() => ws.send(JSON.stringify({ type: "cast", prompt })), 300 + Math.random() * 500);
             break;
@@ -123,7 +142,7 @@ function play(w: Wizard, opts: { dropOnce: boolean }): Promise<void> {
         }
       };
       ws.onclose = (ev) => {
-        if (w.end) return resolve();
+        if (w.end || w.vanished) return resolve();
         // The deliberate drop reconnects via the setTimeout above; any other close is a failure.
         if (dropped && !w.reconnected) return;
         reject(new Error(`${w.name}: socket closed before match_end (code ${ev.code} ${ev.reason})`));
@@ -176,9 +195,11 @@ async function main() {
     console.error(`timed out after ${TIMEOUT_MS} ms; events A=${merlin.events.join(",")} B=${morgana.events.join(",")}`);
     process.exit(1);
   }, TIMEOUT_MS);
-  await Promise.all([play(merlin, { dropOnce: false }), play(morgana, { dropOnce: true })]);
+  await Promise.all([play(merlin, { dropOnce: false }), play(morgana, { dropOnce: !EDGE })]);
   clearTimeout(timer);
 
+  const [a, b] = merlin.slot === "A" ? [merlin, morgana] : [morgana, merlin];
+  if (EDGE) return edgeChecks(a, b);
   const end = merlin.end!;
   console.log(`=== MATCH END: winner ${end.winner ?? "none (draw)"} by ${end.reason}; tally A ${end.tally.A} – B ${end.tally.B}; totals A ${end.totals.A} / B ${end.totals.B} ===\n`);
 
@@ -208,6 +229,25 @@ async function main() {
     process.exit(1);
   }
   console.log("\nALL CHECKS PASSED");
+  process.exit(0);
+}
+
+async function edgeChecks(a: Wizard, _b: Wizard) {
+  const end = a.end!;
+  const v = a.verdicts;
+  console.log(`=== MATCH END: winner ${end.winner} by ${end.reason}; tally A ${end.tally.A} – B ${end.tally.B} ===`);
+  check(v[0]?.outcome === "void" && v[0].roundWinner === null && !v[0].scores.A && !v[0].scores.B, "round 1: generation failure after one retry voids the round");
+  check(v[1]?.outcome === "forfeit" && v[1].roundWinner === "A" && !v[1].scores.B && !!v[1].scores.A, "round 2: empty scroll at the deadline forfeits the round");
+  check(!!v[1]?.quotes.B, "round 2: forfeiter still gets a (canned) Whiskers line");
+  check(end.reason === "forfeit_disconnect" && end.winner === "A", "round 3: disconnect past the grace period forfeits the match");
+  check(end.tally.voids === 1 && end.tally.A === 1, "tally: 1 void, A 1 round");
+  const snap = await http<{ phase: string; players: { B: { connected: boolean } } }>("GET", `/match/${a.matchId}`, a.token);
+  check(snap.phase === "ended" && snap.players.B.connected === false, "snapshot shows ended match with B disconnected");
+  if (failures.length) {
+    console.error(`FAILED (${failures.length}):`, failures);
+    process.exit(1);
+  }
+  console.log("ALL EDGE CHECKS PASSED");
   process.exit(0);
 }
 

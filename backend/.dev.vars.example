@@ -1,0 +1,23 @@
+# Copy to .dev.vars for `npm run dev` (wrangler dev). Never commit .dev.vars.
+# In production, set each with: npx wrangler secret put <NAME>
+
+# Required: the shared beta access code players type once.
+ACCESS_CODE=letmein
+
+# Recommended: HMAC key for session tokens (falls back to ACCESS_CODE). Rotating the access
+# code then doesn't log everyone out. Use a long random string.
+SESSION_SECRET=change-me-to-a-long-random-string
+
+# Enables /admin/* for scripts/load-set.ts. Leave unset in prod except while loading sets if you like.
+ADMIN_TOKEN=dev-admin
+
+# Judge: Claude via Cloudflare AI Gateway. Missing → judge falls back to Workers AI (logged once).
+ANTHROPIC_API_KEY=
+
+# Image generation via OpenArt (only when IMAGE_GEN_PROVIDER=openart). Missing → Workers AI.
+OPENART_API_KEY=
+
+# Optional overrides of wrangler.jsonc vars for local runs, e.g. keyless play:
+# IMAGE_GEN_PROVIDER=stub
+# JUDGE_PROVIDER=stub
+# AI_GATEWAY_URL=https://gateway.ai.cloudflare.com/v1/<account_id>/<gateway_id>

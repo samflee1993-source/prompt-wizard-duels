@@ -1,12 +1,13 @@
 // Claude (Haiku-class by default) through Cloudflare AI Gateway, with structured JSON output.
 import Anthropic from "@anthropic-ai/sdk";
-import { bytesToBase64, decodeImage, encodePng, fitWithin } from "../../../lib/image";
+import { bytesToBase64, shrinkToFit } from "../../../lib/image";
 import type { Slot } from "../../../protocol";
 import { extractJson, judgeInstructions, judgeOutputSchema, type JudgeInput, type JudgeProvider } from "../types";
 
-/** Judges don't need full resolution; 512px keeps tokens (and cost) down. */
-export function judgeImagePng(bytes: Uint8Array, maxSide = 512): Uint8Array {
-  return encodePng(fitWithin(decodeImage(bytes), maxSide));
+/** Judges don't need full resolution; 512px keeps tokens (and cost) down. Small images pass through untouched. */
+export function judgeImage(bytes: Uint8Array, maxSide = 512): { data: string; mime: "image/png" | "image/jpeg" } {
+  const s = shrinkToFit(bytes, maxSide);
+  return { data: bytesToBase64(s.bytes), mime: s.mime as "image/png" | "image/jpeg" };
 }
 
 export class AnthropicViaGatewayProvider implements JudgeProvider {
@@ -28,10 +29,10 @@ export class AnthropicViaGatewayProvider implements JudgeProvider {
     const images = [input.before, input.target, ...slots.map((s) => (s === "A" ? input.resultA : input.resultB))].filter(
       (b): b is Uint8Array => !!b,
     );
-    const content: Anthropic.ContentBlockParam[] = images.map((b) => ({
-      type: "image",
-      source: { type: "base64", media_type: "image/png", data: bytesToBase64(judgeImagePng(b)) },
-    }));
+    const content: Anthropic.ContentBlockParam[] = images.map((b) => {
+      const img = judgeImage(b);
+      return { type: "image", source: { type: "base64", media_type: img.mime, data: img.data } };
+    });
     content.push({ type: "text", text: judgeInstructions(input, slots) });
 
     const res = await this.client.messages.create({
